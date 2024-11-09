@@ -3,9 +3,8 @@ package mc_server
 import (
 	fbauth "Eulogist/core/fb_auth/mv4"
 	fb_client "Eulogist/core/fb_auth/mv4/client"
-	"Eulogist/core/minecraft/netease/protocol"
-	"Eulogist/core/minecraft/netease/protocol/packet"
-	raknet_connection "Eulogist/core/raknet"
+	"Eulogist/core/minecraft/protocol"
+	"Eulogist/core/minecraft/protocol/packet"
 	"Eulogist/core/raknet/handshake"
 	raknet_wrapper "Eulogist/core/raknet/wrapper"
 	"Eulogist/core/tools/skin_process"
@@ -18,7 +17,7 @@ import (
 	"fmt"
 	"time"
 
-	"Eulogist/core/minecraft/netease/raknet"
+	"Eulogist/core/minecraft/raknet"
 )
 
 // ConnectToServer 用于连接到 basicConfig 所指代的租赁服。
@@ -66,7 +65,7 @@ func ConnectToServer(
 	// 同步数据
 	mcServer.PersistenceData.BotComponent = authResponse.BotComponent
 	mcServer.authResponse = authResponse
-	mcServer.Conn = raknet_connection.NewNetEaseRaknetWrapper()
+	mcServer.Conn = raknet_wrapper.NewRaknet()
 	// 设置底层连接并启动数据包解析
 	mcServer.Conn.SetConnection(connection, clientKey)
 	go mcServer.Conn.ProcessIncomingPackets()
@@ -94,7 +93,7 @@ func (m *MinecraftServer) FinishHandshake() error {
 	// 向网易租赁服请求网络设置，
 	// 这是赞颂者登录到网易租赁服的第一个数据包
 	m.Conn.WriteSinglePacket(
-		raknet_wrapper.MinecraftPacket[packet.Packet]{
+		raknet_wrapper.MinecraftPacket{
 			Packet: &packet.RequestNetworkSettings{ClientProtocol: protocol.CurrentProtocol},
 		},
 	)

@@ -5,12 +5,9 @@ import (
 	"Eulogist/proxy/persistence_data"
 	"net"
 
-	"Eulogist/core/minecraft/standard/protocol/packet"
-
-	"github.com/sandertv/go-raknet"
+	"Eulogist/core/minecraft/raknet"
 )
 
-// ...
 type MinecraftClient struct {
 	listener  *raknet.Listener
 	connected chan struct{}
@@ -18,5 +15,5 @@ type MinecraftClient struct {
 	Address         *net.UDPAddr
 	PersistenceData *persistence_data.PersistenceData
 
-	Conn *raknet_wrapper.Raknet[packet.Packet]
+	Conn *raknet_wrapper.Raknet
 }

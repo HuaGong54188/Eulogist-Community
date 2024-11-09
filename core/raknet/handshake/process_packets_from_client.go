@@ -8,9 +8,9 @@ import (
 	"encoding/base64"
 	"fmt"
 
-	"Eulogist/core/minecraft/standard/protocol"
-	"Eulogist/core/minecraft/standard/protocol/login"
-	"Eulogist/core/minecraft/standard/protocol/packet"
+	"Eulogist/core/minecraft/protocol"
+	"Eulogist/core/minecraft/protocol/login"
+	"Eulogist/core/minecraft/protocol/packet"
 
 	"gopkg.in/square/go-jose.v2"
 	"gopkg.in/square/go-jose.v2/jwt"
@@ -21,7 +21,7 @@ import (
 // 否则，以 NetworkSettings 作为响应，
 // 并且为底层 Raknet 连接启用数据包压缩
 func HandleRequestNetworkSettings(
-	r *raknet_wrapper.Raknet[packet.Packet],
+	r *raknet_wrapper.Raknet,
 	pk *packet.RequestNetworkSettings,
 ) error {
 	// 检查网络协议版本
@@ -31,14 +31,14 @@ func HandleRequestNetworkSettings(
 			// 此时服务器已过期，所以我们需要更新 status 的值
 			status = packet.PlayStatusLoginFailedServer
 		}
-		r.WriteSinglePacket(raknet_wrapper.MinecraftPacket[packet.Packet]{Packet: &packet.PlayStatus{Status: status}})
+		r.WriteSinglePacket(raknet_wrapper.MinecraftPacket{Packet: &packet.PlayStatus{Status: status}})
 		return fmt.Errorf(
 			"HandleRequestNetworkSettings: Connected with an incompatible protocol: expected protocol = %v, client protocol = %v",
 			protocol.CurrentProtocol, pk.ClientProtocol,
 		)
 	}
 	// 发送 NetworkSettings 数据包以响应客户端
-	r.WriteSinglePacket(raknet_wrapper.MinecraftPacket[packet.Packet]{
+	r.WriteSinglePacket(raknet_wrapper.MinecraftPacket{
 		Packet: &packet.NetworkSettings{
 			CompressionThreshold:    1,
 			CompressionAlgorithm:    0,
@@ -58,7 +58,7 @@ func HandleRequestNetworkSettings(
 // 它验证并解码数据包中找到的登录请求，
 // 如果无法成功完成，则返回错误
 func HandleLogin(
-	r *raknet_wrapper.Raknet[packet.Packet],
+	r *raknet_wrapper.Raknet,
 	pk *packet.Login,
 ) (*login.IdentityData, *login.ClientData, error) {
 	// 准备
@@ -85,7 +85,7 @@ func HandleLogin(
 // 它向客户端发送未加密的握手数据包，
 // 然后为底层 Raknet 连接启用数据包加密
 func EnableEncryption(
-	r *raknet_wrapper.Raknet[packet.Packet],
+	r *raknet_wrapper.Raknet,
 	clientPublicKey *ecdsa.PublicKey,
 ) error {
 	// 创建 JWT 签名器
@@ -98,7 +98,7 @@ func EnableEncryption(
 		return fmt.Errorf("EnableEncryption: compact serialise server JWT: %w", err)
 	}
 	// 发送 ServerToClientHandshake 数据包
-	r.WriteSinglePacket(raknet_wrapper.MinecraftPacket[packet.Packet]{
+	r.WriteSinglePacket(raknet_wrapper.MinecraftPacket{
 		Packet: &packet.ServerToClientHandshake{JWT: []byte(serverJWT)},
 	})
 	// 计算公钥

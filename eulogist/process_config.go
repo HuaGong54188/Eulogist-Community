@@ -1,6 +1,7 @@
 package Eulogist
 
 import (
+	"Eulogist/core/tools/skin_process"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -70,7 +71,7 @@ func ReadEulogistConfig() (*EulogistConfig, error) {
 // 读取的内容包括需要进入的租赁服号及其密码，
 // 以及 FastBuilder 原生验证服务器的 Token
 func GenerateEulogistConfig() (config *EulogistConfig, err error) {
-	cfg := EulogistConfig{}
+	cfg := DefaultEulogistConfig()
 
 	pterm.Info.Printf("输入租赁服号: ")
 	fmt.Scanln(&cfg.RentalServerCode)
@@ -87,4 +88,42 @@ func GenerateEulogistConfig() (config *EulogistConfig, err error) {
 	}
 
 	return &cfg, nil
+}
+
+// GenerateNetEaseConfig 根据皮肤路径 skinPath、
+// 皮肤手臂是否纤细 skinIsSlim 及赞颂者开放的服务器地址，
+// 在当前目录下生成用于启动 Minecraft 客户端的配置文件，
+// 并返回该配置文件的绝对路径
+func GenerateNetEaseConfig(
+	skinPath string,
+	skinIsSlim bool,
+	ip string,
+	port int,
+) (configPath string, err error) {
+	cfg := DefaultNetEaseConfig()
+
+	cfg.RoomInfo.IP = ip
+	cfg.RoomInfo.Port = port
+	cfg.SkinInfo.Slim = skinIsSlim
+
+	if !FileExist(skinPath) {
+		currentPath, _ := os.Getwd()
+		cfg.SkinInfo.SkinPath = fmt.Sprintf(`%s\steve.png`, currentPath)
+		err = os.WriteFile("steve.png", skin_process.SteveSkin, 0600)
+		if err != nil {
+			return "", fmt.Errorf("GenerateNetEaseConfig: %v", err)
+		}
+	} else {
+		cfg.SkinInfo.SkinPath = skinPath
+	}
+
+	err = WriteJsonFile("netease.cppconfig", cfg)
+	if err != nil {
+		return "", fmt.Errorf("GenerateNetEaseConfig: %v", err)
+	}
+
+	configPath, _ = os.Getwd()
+	configPath = fmt.Sprintf(`%s\netease.cppconfig`, configPath)
+
+	return
 }

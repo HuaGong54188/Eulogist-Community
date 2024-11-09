@@ -363,8 +363,24 @@ type AgentCreatedEvent struct{}
 // Marshal ...
 func (a *AgentCreatedEvent) Marshal(r IO) {}
 
+<<<<<<< HEAD:core/minecraft/netease/protocol/events.go
 // PatternRemovedEvent is the event data sent when a pattern is removed.
 type PatternRemovedEvent struct{}
+=======
+// PatternRemovedEvent is the event data sent when a pattern is removed. This is now deprecated.
+type PatternRemovedEvent struct {
+	// ItemID ...
+	ItemID int32
+	// AuxValue ...
+	AuxValue int32
+	// PatternsSize ...
+	PatternsSize int32
+	// PatternIndex ...
+	PatternIndex int32
+	// PatternColour ...
+	PatternColour int32
+}
+>>>>>>> bfa338a47cf502259801746dc45a1e032687f7e8:core/minecraft/protocol/events.go
 
 // Marshal ...
 func (p *PatternRemovedEvent) Marshal(r IO) {}

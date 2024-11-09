@@ -2,7 +2,7 @@ package mc_server
 
 import (
 	fbauth "Eulogist/core/fb_auth/mv4"
-	"Eulogist/core/minecraft/netease/protocol/packet"
+	"Eulogist/core/minecraft/protocol/packet"
 	raknet_wrapper "Eulogist/core/raknet/wrapper"
 	"Eulogist/core/tools/py_rpc"
 	"encoding/json"
@@ -10,14 +10,14 @@ import (
 )
 
 // OnPyRpc 处理数据包 PyRpc
-func (m *MinecraftServer) OnPyRpc(p *packet.PyRpc) error {
+func (m *MinecraftServer) OnPyRpc(p *packet.PyRpc) (shouldSendCopy bool, err error) {
 	// 解码 PyRpc
 	if p.Value == nil {
-		return nil
+		return true, nil
 	}
 	content, err := py_rpc.Unmarshal(p.Value)
 	if err != nil {
-		return fmt.Errorf("OnPyRpc: %v", err)
+		return true, fmt.Errorf("OnPyRpc: %v", err)
 	}
 	// 根据内容类型处理不同的 PyRpc
 	switch c := content.(type) {
@@ -25,7 +25,7 @@ func (m *MinecraftServer) OnPyRpc(p *packet.PyRpc) error {
 		c.Content = fbauth.TransferData(m.fbClient, c.Content)
 		c.Type = py_rpc.StartTypeResponse
 		m.Conn.WriteSinglePacket(
-			raknet_wrapper.MinecraftPacket[packet.Packet]{
+			raknet_wrapper.MinecraftPacket{
 				Packet: &packet.PyRpc{
 					Value:         py_rpc.Marshal(c),
 					OperationType: packet.PyRpcOperationTypeSend,
@@ -56,7 +56,7 @@ func (m *MinecraftServer) OnPyRpc(p *packet.PyRpc) error {
 		}
 		// 完成零知识证明(挑战)
 		m.Conn.WriteSinglePacket(
-			raknet_wrapper.MinecraftPacket[packet.Packet]{
+			raknet_wrapper.MinecraftPacket{
 				Packet: &packet.PyRpc{
 					Value:         py_rpc.Marshal(&py_rpc.SetMCPCheckNum{ret_p}),
 					OperationType: packet.PyRpcOperationTypeSend,
@@ -65,7 +65,12 @@ func (m *MinecraftServer) OnPyRpc(p *packet.PyRpc) error {
 		)
 		// 标记零知识证明(挑战)已在当前会话下永久完成
 		m.getCheckNumEverPassed = true
+	default:
+		// 对于其他种类的 PyRpc 数据包，
+		// 返回 true 表示需要将数据包抄送至
+		// Minecraft 客户端
+		return true, nil
 	}
 	// 返回值
-	return nil
+	return false, nil
 }

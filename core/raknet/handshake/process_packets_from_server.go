@@ -2,9 +2,9 @@ package handshake
 
 import (
 	fb_client "Eulogist/core/fb_auth/mv4/client"
-	"Eulogist/core/minecraft/netease/protocol"
-	"Eulogist/core/minecraft/netease/protocol/login"
-	"Eulogist/core/minecraft/netease/protocol/packet"
+	"Eulogist/core/minecraft/protocol"
+	"Eulogist/core/minecraft/protocol/login"
+	"Eulogist/core/minecraft/protocol/packet"
 	raknet_wrapper "Eulogist/core/raknet/wrapper"
 	"Eulogist/core/tools/skin_process"
 	"bytes"
@@ -23,7 +23,7 @@ import (
 // 这会为后续的数据包传输启用压缩，
 // 然后，我们会构造并发送 Login 数据包至服务器
 func HandleNetworkSettings(
-	r *raknet_wrapper.Raknet[packet.Packet],
+	r *raknet_wrapper.Raknet,
 	pk *packet.NetworkSettings,
 	authResponse *fb_client.AuthResponse,
 	skin *skin_process.Skin,
@@ -43,7 +43,7 @@ func HandleNetworkSettings(
 		return nil, nil, fmt.Errorf("HandleNetworkSettings: %v", err)
 	}
 	// 发送登录请求
-	r.WriteSinglePacket(raknet_wrapper.MinecraftPacket[packet.Packet]{
+	r.WriteSinglePacket(raknet_wrapper.MinecraftPacket{
 		Packet: &packet.Login{
 			ClientProtocol:    protocol.CurrentProtocol,
 			ConnectionRequest: loginRequest,
@@ -57,7 +57,7 @@ func HandleNetworkSettings(
 // 处理从服务器收到的 ServerToClientHandshake 包，
 // 并为后续的数据传输启用加密
 func HandleServerToClientHandshake(
-	r *raknet_wrapper.Raknet[packet.Packet],
+	r *raknet_wrapper.Raknet,
 	pk *packet.ServerToClientHandshake,
 ) error {
 	// 解析 JWT 令牌
@@ -90,7 +90,7 @@ func HandleServerToClientHandshake(
 	r.GetEncoder().EnableEncryption(keyBytes)
 	r.GetDecoder().EnableEncryption(keyBytes)
 	// 发送回应的 ClientToServerHandshake 包
-	r.WriteSinglePacket(raknet_wrapper.MinecraftPacket[packet.Packet]{Packet: &packet.ClientToServerHandshake{}})
+	r.WriteSinglePacket(raknet_wrapper.MinecraftPacket{Packet: &packet.ClientToServerHandshake{}})
 	// 返回值
 	return nil
 }
@@ -98,7 +98,7 @@ func HandleServerToClientHandshake(
 // HandleStartGame 处理 StartGame 数据包，
 // 用于表示玩家已加入游戏
 func HandleStartGame(
-	r *raknet_wrapper.Raknet[packet.Packet],
+	r *raknet_wrapper.Raknet,
 	pk *packet.StartGame,
 ) (entityUniqueID int64, entityRuntimeID uint64) {
 	entityUniqueID = pk.EntityUniqueID

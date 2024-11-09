@@ -1,46 +1,43 @@
 package raknet_wrapper
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/rand"
+	"fmt"
 	"net"
-	"sync/atomic"
+	"runtime/debug"
 
-	"Eulogist/core/minecraft/standard/protocol/packet"
+	"Eulogist/core/minecraft/protocol"
+	"Eulogist/core/minecraft/protocol/packet"
+
+	"github.com/pterm/pterm"
 )
 
-// 初始化一个空的 Raknet。
-//
-// decodePacket 用于解码数据包，
-// 而 encodePacket 则用于编码数据包
-func NewRaknet[T any](
-	decodePacket func(buf []byte, shieldID *atomic.Int32) (pk MinecraftPacket[T]),
-	encodePacket func(pk MinecraftPacket[T], shieldID *atomic.Int32) (buf []byte),
-) *Raknet[T] {
+// 初始化一个空的 Raknet
+func NewRaknet() *Raknet {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Raknet[T]{
-		context:      ctx,
-		cancel:       cancel,
-		decodePacket: decodePacket,
-		encodePacket: encodePacket,
+	return &Raknet{
+		context: ctx,
+		cancel:  cancel,
 	}
 }
 
 // 将底层 Raknet 连接设置为 connection，
 // 并指定 服务器/客户端 私钥为 key
-func (r *Raknet[T]) SetConnection(connection net.Conn, key *ecdsa.PrivateKey) {
+func (r *Raknet) SetConnection(connection net.Conn, key *ecdsa.PrivateKey) {
 	r.connection = connection
 	r.encoder = packet.NewEncoder(connection)
 	r.decoder = packet.NewDecoder(connection)
 	r.decoder.DisableBatchPacketLimit()
-	r.packets = make(chan []MinecraftPacket[T], 255)
+	r.packets = make(chan []MinecraftPacket, 255)
 	r.key = key
 	_, _ = rand.Read(r.salt)
 }
 
 // 关闭已建立的 Raknet 底层连接
-func (r *Raknet[T]) CloseConnection() {
+func (r *Raknet) CloseConnection() {
 	r.closedLock.Lock()
 	defer r.closedLock.Unlock()
 
@@ -68,7 +65,7 @@ func (r *Raknet[T]) CloseConnection() {
 
 另，此函数应当只被调用一次
 */
-func (r *Raknet[T]) ProcessIncomingPackets() {
+func (r *Raknet) ProcessIncomingPackets() {
 	// 确保该函数不会返回恐慌
 	defer func() {
 		recover()
@@ -84,10 +81,51 @@ func (r *Raknet[T]) ProcessIncomingPackets() {
 			return
 		}
 		// 处理每个数据包
-		packetSlice := make([]MinecraftPacket[T], len(packets))
+		packetSlice := make([]MinecraftPacket, len(packets))
 		for index, data := range packets {
-			pk := r.decodePacket(data, &r.shieldID)
-			packetSlice[index] = pk
+			// 准备读取数据包
+			var pk packet.Packet
+			buffer := bytes.NewBuffer(data)
+			reader := protocol.NewReader(buffer, r.shieldID.Load(), false)
+			// 获取数据包头和数据包处理函数
+			packetHeader := packet.Header{}
+			packetHeader.Read(buffer)
+			packetFunc := packet.ListAllPackets()[packetHeader.PacketID]
+			// 序列化数据包
+			func() {
+				defer func() {
+					r := recover()
+					if r == nil {
+						return
+					}
+					if packetFunc == nil {
+						pterm.Warning.Printf(
+							"ProcessIncomingPackets: Failed to unmarshal packet which numbered %d, and the error log is %v\n\n[Stack Info]\n%s\n",
+							packetHeader.PacketID, r, string(debug.Stack()),
+						)
+						fmt.Println()
+					} else {
+						pterm.Warning.Printf(
+							"ProcessIncomingPackets: Failed to unmarshal packet %T, and the error log is %v\n\n[Stack Info]\n%s\n",
+							packetFunc(), r, string(debug.Stack()),
+						)
+						fmt.Println()
+					}
+				}()
+				switch packetHeader.PacketID {
+				case packet.IDRequestNetworkSettings, packet.IDNetworkSettings:
+				case packet.IDLogin:
+				case packet.IDServerToClientHandshake, packet.IDClientToServerHandshake:
+				case packet.IDStartGame, packet.IDNeteaseJson, packet.IDPyRpc:
+				case packet.IDUpdatePlayerGameType:
+				default:
+					return
+				}
+				pk = packetFunc()
+				pk.Marshal(reader)
+			}()
+			// 同步数据包到待存区
+			packetSlice[index] = MinecraftPacket{Packet: pk, Bytes: data}
 		}
 		// 提交
 		select {
@@ -110,7 +148,7 @@ func (r *Raknet[T]) ProcessIncomingPackets() {
 因此，在读取时，我们只解码了一部分必须的数据包，
 而对于其他的数据包，我们将仅仅地保留它们的二进制负载
 */
-func (r *Raknet[T]) ReadPackets() []MinecraftPacket[T] {
+func (r *Raknet) ReadPackets() []MinecraftPacket {
 	return <-r.packets
 }
 
@@ -118,7 +156,7 @@ func (r *Raknet[T]) ReadPackets() []MinecraftPacket[T] {
 // WritePackets 会优先采用每个数据包的二进制负载，
 // 除非负载为空，则此时再转而编码对应的数据包，
 // 然后写入到 Raknet 底层连接
-func (r *Raknet[T]) WritePackets(pk []MinecraftPacket[T]) {
+func (r *Raknet) WritePackets(pk []MinecraftPacket) {
 	// 如果当前不存在要传输的数据包
 	if len(pk) == 0 {
 		return
@@ -133,7 +171,23 @@ func (r *Raknet[T]) WritePackets(pk []MinecraftPacket[T]) {
 		}
 		// 此时当前数据包不存在已编码的二进制负载，
 		// 因此我们主动编码它
-		packetBytes[index] = r.encodePacket(singlePacket, &r.shieldID)
+		buffer := bytes.NewBuffer([]byte{})
+		packetHeader := packet.Header{PacketID: singlePacket.Packet.ID()}
+		packetHeader.Write(buffer)
+		func() {
+			defer func() {
+				r := recover()
+				if r != nil {
+					pterm.Warning.Printf(
+						"WritePackets: Failed to marshal packet %T, and the error log is %v\n\n[Stack Info]\n%s\n",
+						singlePacket, r, string(debug.Stack()),
+					)
+					fmt.Println()
+				}
+			}()
+			singlePacket.Packet.Marshal(protocol.NewWriter(buffer, r.shieldID.Load()))
+		}()
+		packetBytes[index] = buffer.Bytes()
 	}
 	// 将数据包写入底层 Raknet 连接
 	encodeError := r.encoder.Encode(packetBytes)
@@ -148,6 +202,6 @@ func (r *Raknet[T]) WritePackets(pk []MinecraftPacket[T]) {
 // WriteSinglePacket 会优先采用它的二进制负载，
 // 除非负载为空，则此时再转而编码该数据包为二进制形式，
 // 然后再写入到 Raknet 底层连接
-func (r *Raknet[T]) WriteSinglePacket(pk MinecraftPacket[T]) {
-	r.WritePackets([]MinecraftPacket[T]{pk})
+func (r *Raknet) WriteSinglePacket(pk MinecraftPacket) {
+	r.WritePackets([]MinecraftPacket{pk})
 }

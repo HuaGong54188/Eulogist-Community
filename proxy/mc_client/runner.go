@@ -1,11 +1,10 @@
 package mc_client
 
 import (
+	"Eulogist/core/minecraft/protocol/packet"
 	"Eulogist/core/raknet/handshake"
 	"Eulogist/proxy/persistence_data"
 	"fmt"
-
-	"Eulogist/core/minecraft/standard/protocol/packet"
 )
 
 /*
@@ -24,9 +23,7 @@ func RunServer(persistenceData *persistence_data.PersistenceData) (
 	err error,
 ) {
 	// prepare
-	client = &MinecraftClient{
-		PersistenceData: persistenceData,
-	}
+	client = &MinecraftClient{PersistenceData: persistenceData}
 	// start listening
 	err = client.CreateListener()
 	if err != nil {
