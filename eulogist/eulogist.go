@@ -50,7 +50,6 @@ func Eulogist() error {
 		defer server.Conn.CloseConnection()
 
 		pterm.Success.Println("喜报！成功连接到网易租赁服，接下来我们尝试与租赁服握手")
-
 		err = server.FinishHandshake()
 		if err != nil {
 			return fmt.Errorf("Eulogist: %v", err)
